@@ -1,0 +1,371 @@
+#!/bin/bash
+### 
+#bash ~/Documents/scripts/postmortembrain-mpm/Segmentation/Freesurfer/post_freesurfer_pipeline 007_C_C_NEGRA_ID/mr/200708_Terra_7T_32Ch_WB /data/pt_02101/preprocessed/007_C_C_NEGRA_ID/mr/200708_Terra_7T_32Ch_WB_V2/freesurfer MTsat_0p3mm_downsampled_to_0p7mm_FSV7_hires
+
+
+
+#################################
+#################################
+#################################
+
+#SUBJECTS_DIR="/data/pt_02101/preprocessed/004_C_C_GROAT_ID12128/mr/191018_Magnetom_7T_32Ch_WB/freesurfer"
+#SUBJECTNAME="${SUBJECTNAME}"
+id_slash_scan_session=$1 ### something like your subjectid
+SUBJECTS_DIR=$2 ###"/data/pt_02101/preprocessed/${id_slash_scan_session}_V2/freesurfer"
+SUBJECTNAME=$3 ### name of subdirectory in your SUBJECTS_DIR
+id_underscore_scan_session=$(echo "$id_slash_scan_session" | sed "s/\//_/g") ### just relevant for ilona's specific naming convention
+
+echo "RUNNING POSTFS WITH $id_slash_scan_session $SUBJECTS_DIR $SUBJECTNAME"
+DATA_DIR="/data/tu_lippi/Software/Primate_resources/LS_FS_atlas/BB38chimp_forSharing_Ilona" ### chimp atlas location
+
+export SUBJECTS_DIR=${SUBJECTS_DIR}
+export FREESURFER_HOME="/afs/cbs.mpg.de/software/freesurfer/7.0.0/ubuntu-bionic-amd64"
+
+		#yes | rm -R ${SUBJECTS_DIR}/${SUBJECTNAME}/SurfaceProjections
+		#yes | rm -R ${SUBJECTS_DIR}/${SUBJECTNAME}/Profiles
+		#yes | rm -R ${SUBJECTS_DIR}/${SUBJECTNAME}/*volume_masks
+		#yes | rm ${SUBJECTS_DIR}/${SUBJECTNAME}/label/*BB38chimp*
+		#yes | rm ${SUBJECTS_DIR}/${SUBJECTNAME}/stats/*BB38chimp*
+		#yes | rm ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/*h.KW.equ*.pial
+
+###########################################
+### 1: employ BB atlas
+
+if ! [ -f "${SUBJECTS_DIR}/${SUBJECTNAME}/label/lh.BB38chimp.annot" ]; then ### apply chimp atlas
+	mris_ca_label -t ${DATA_DIR}/BB38chimp.annot.ctab ${SUBJECTNAME} lh ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/lh.sphere.reg ${DATA_DIR}/lh.BB38chimp.gcs ${SUBJECTS_DIR}/${SUBJECTNAME}/label/lh.BB38chimp.annot 
+	mris_ca_label -t ${DATA_DIR}/BB38chimp.annot.ctab ${SUBJECTNAME} rh ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/rh.sphere.reg ${DATA_DIR}/rh.BB38chimp.gcs ${SUBJECTS_DIR}/${SUBJECTNAME}/label/rh.BB38chimp.annot
+fi
+
+## Glasser; https://cjneurolab.org/2016/11/22/hcp-mmp1-0-volumetric-nifti-masks-in-native-structural-space/
+if false; then
+	echo "GLAAAAAAAAAAAAASSER"
+	if ! [ -f "${SUBJECTS_DIR}/${SUBJECTNAME}/label/lh.${SUBJECTNAME}_HCP-MMP1.annot" ]; then
+		yes | rm ${SUBJECTS_DIR}/fsaverage
+		cp /data/hu_lippi/Documents/scripts/Primate_resources/Glasseratlas/create_subj_volume_parcellation.sh ${SUBJECTS_DIR}
+		cp -R /afs/cbs.mpg.de/software/freesurfer/6.0.0/ubuntu-xenial-amd64/subjects/fsaverage ${SUBJECTS_DIR}
+		for hem in "lh" "rh"; do
+			cp /data/hu_lippi/Documents/scripts/Primate_resources/Glasseratlas/${hem}.HCP-MMP1.annot ${SUBJECTS_DIR}/fsaverage/label
+		done
+		yes | rm ${SUBJECTS_DIR}/subjectlist.txt
+		echo ${SUBJECTNAME} >> ${SUBJECTS_DIR}/subjectlist.txt
+		cd ${SUBJECTS_DIR}/${SUBJECTNAME}
+		bash ${SUBJECTS_DIR}/create_subj_volume_parcellation.sh -L ${SUBJECTS_DIR}/subjectlist.txt -a HCP-MMP1 -d Glasser_annotation
+		## https://cjneurolab.org/2016/11/22/hcp-mmp1-0-volumetric-nifti-masks-in-native-structural-space/
+	fi
+fi
+
+#### VOSDEWAEL
+if false; then
+	echo "VOSDEWAEL"
+	if ! [ -f "${SUBJECTS_DIR}/${SUBJECTNAME}/Vosdewael200/label/rh.parc_200.label" ]; then
+		yes | rm ${SUBJECTS_DIR}/fsaverage
+		cp /data/hu_lippi/Documents/scripts/Primate_resources/Glasseratlas/create_subj_volume_parcellation.sh ${SUBJECTS_DIR}
+		echo "copying folder"
+		cp -R /afs/cbs.mpg.de/software/freesurfer/6.0.0/ubuntu-xenial-amd64/subjects/fsaverage ${SUBJECTS_DIR}
+		echo "end"
+		for hem in "lh" "rh"; do
+			echo "copying"
+			cp /data/hu_lippi/Documents/scripts/Primate_resources/Paquola2020_parcellation_vosdewael200/${hem}.vosdewael200.annot ${SUBJECTS_DIR}/fsaverage/label
+			echo "`ls ${SUBJECTS_DIR}/fsaverage/label/*vosd*`"
+		done
+		yes | rm ${SUBJECTS_DIR}/subjectlist.txt
+		echo ${SUBJECTNAME} >> ${SUBJECTS_DIR}/subjectlist.txt
+		echo "RUNNING bash ${SUBJECTS_DIR}/create_subj_volume_parcellation.sh -L ${SUBJECTS_DIR}/subjectlist.txt -a vosdewael200 -d Vosdewael200"
+		yes | rm ${SUBJECTS_DIR}/${SUBJECTNAME}/label/*${SUBJECTNAME}*vosdewael200.annot
+		echo "going into folder ${SUBJECTS_DIR}/${SUBJECTNAME}"
+		cd ${SUBJECTS_DIR}/${SUBJECTNAME}
+		bash ${SUBJECTS_DIR}/create_subj_volume_parcellation.sh -L ${SUBJECTS_DIR}/subjectlist.txt -a vosdewael200 -d Vosdewael200
+		## https://cjneurolab.org/2016/11/22/hcp-mmp1-0-volumetric-nifti-masks-in-native-structural-space/
+	fi
+fi
+
+### Caseyes 1012 nodes from 2019 paper
+if false; then
+	echo "CASEY" # https://github.com/MICA-MNI/micaopen/tree/master/a_moment_of_change/maps
+	if ! [ -f "${SUBJECTS_DIR}/${SUBJECTNAME}/sjh/label/rh.sjh_1015.label" ]; then
+		yes | rm ${SUBJECTS_DIR}/fsaverage
+		cp /data/hu_lippi/Documents/scripts/Primate_resources/Glasseratlas/create_subj_volume_parcellation.sh ${SUBJECTS_DIR}
+		cp -R /afs/cbs.mpg.de/software/freesurfer/6.0.0/ubuntu-xenial-amd64/subjects/fsaverage ${SUBJECTS_DIR}
+		for hem in "lh" "rh"; do
+			cp /data/hu_lippi/Documents/scripts/Primate_resources/Paquola2019_parcellation_sjh/${hem}.sjh.annot ${SUBJECTS_DIR}/fsaverage/label
+		done
+		yes | rm ${SUBJECTS_DIR}/subjectlist.txt
+		echo ${SUBJECTNAME} >> ${SUBJECTS_DIR}/subjectlist.txt
+		yes | rm ${SUBJECTS_DIR}/${SUBJECTNAME}/label/*${SUBJECTNAME}*sjh.annot
+		cd ${SUBJECTS_DIR}/${SUBJECTNAME}
+		bash ${SUBJECTS_DIR}/create_subj_volume_parcellation.sh -L ${SUBJECTS_DIR}/subjectlist.txt -a sjh -d sjh
+		## https://cjneurolab.org/2016/11/22/hcp-mmp1-0-volumetric-nifti-masks-in-native-structural-space/
+	fi
+fi
+
+## 
+
+cd ${SUBJECTS_DIR}
+
+if ! [ -f ${SUBJECTNAME}/mri/transforms/FS_2_nifti.dat ]; then
+	tkregister2 --targ ${SUBJECTNAME}.nii --mov ${SUBJECTNAME}/mri/orig.mgz --regheader --reg ${SUBJECTNAME}/mri/transforms/FS_2_nifti.dat --noedit
+fi
+if ! [ -f ${SUBJECTNAME}/mri/transforms/nifti_2_FS.dat ]; then
+	tkregister2 --mov ${SUBJECTNAME}.nii --targ ${SUBJECTNAME}/mri/orig.mgz --regheader --reg ${SUBJECTNAME}/mri/transforms/nifti_2_FS.dat --noedit
+fi
+
+###########################################
+### 2: create annotation labels
+echo "halllo test  ${SUBJECTNAME}/label/lh.BB38chimp-021.label"
+if ! [ -f ${SUBJECTNAME}/label/lh.BB38chimp-021.label ]; then
+	mri_annotation2label --subject ${SUBJECTNAME} --hemi lh --labelbase lh.BB38chimp --annotation BB38chimp
+	mri_annotation2label --subject ${SUBJECTNAME} --hemi rh --labelbase rh.BB38chimp --annotation BB38chimp
+fi
+if ! [ -f ${SUBJECTNAME}/label/lh.aparc.annot.a2009s-021.label ]; then
+	mri_annotation2label --subject ${SUBJECTNAME} --hemi lh --labelbase lh.aparc.annot.a2009s --annotation aparc.a2009s
+	mri_annotation2label --subject ${SUBJECTNAME} --hemi rh --labelbase rh.aparc.annot.a2009s --annotation aparc.a2009s
+fi
+if ! [ -f ${SUBJECTNAME}/label/lh.aparc.annot-001.label ]; then
+	mri_annotation2label --subject ${SUBJECTNAME} --hemi lh --labelbase lh.aparc.annot --annotation aparc
+	mri_annotation2label --subject ${SUBJECTNAME} --hemi rh --labelbase rh.aparc.annot --annotation aparc
+fi
+
+###########################################
+### 3: export annotation volumes ### ADD aparc
+if true; then
+	### make aseg.nii
+	if ! [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg.nii ]; then
+		mri_vol2vol --mov ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.mgz --targ ${SUBJECTS_DIR}/${SUBJECTNAME}.nii --regheader --o ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii --no-save-reg
+	fi
+	if ! [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_cortex.nii ]; then
+		echo "making subcortical masks"
+		mkdir ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 10 -uthr 10 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/lh_thalamus
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 11 -uthr 11 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/lh_caudate
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 12 -uthr 12 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/lh_putamen
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 13 -uthr 14 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/lh_pallidum
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 27 -uthr 27 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/lh_substantia_nigra
+
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 49 -uthr 49 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_thalamus
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 50 -uthr 50 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_caudate
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 51 -uthr 51 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_putamen
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 52 -uthr 52 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_pallidum
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 59 -uthr 59 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_substantia_nigra
+		#### cortex and WM
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 2 -uthr 2 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/lh_wm
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 3 -uthr 3 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/lh_cortex
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 41 -uthr 41 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_wm
+		fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/aseg.nii -thr 42 -uthr 42 ${SUBJECTS_DIR}/${SUBJECTNAME}/aseg_volume_masks/rh_cortex
+	fi
+
+	for atlas in "aparc.annot.a2009s" "BB38chimp"; do # "aparc.annot"; do
+		maskoutdir="${SUBJECTS_DIR}/${SUBJECTNAME}/${atlas}_volume_masks"
+		mkdir ${maskoutdir}
+		#cp ${SUBJECTNAME}.nii ${maskoutdir}/killme.nii
+		###
+		for hem in "lh" "rh"; do
+			### register cortical ribbon
+			if ! [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.nii ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.mgz ] ; then
+				#mri_vol2vol --mov ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.mgz --targ ${SUBJECTS_DIR}/${SUBJECTNAME}.nii --regheader --o ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.nii --no-save-reg
+				mri_vol2vol --mov ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.mgz --targ ${SUBJECTS_DIR}/${SUBJECTNAME}.nii --reg ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/transforms/FS_2_nifti.dat --o ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.nii --no-save-reg
+				fslmaths ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.nii -thr .5 -bin ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon_mask.nii
+			fi
+			if ! [ -f ${maskoutdir}/${hem}_ALL.nii ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon.nii ]; then
+				echo "converting Lianne's labels"
+				#for i in {001..038}; do
+				for i in {001..100}; do
+					if [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/label/${hem}.${atlas}-${i}.label ] && ! [ -f ${maskoutdir}/${hem}_${i}.nii ] ; then
+						### old:
+						#mri_label2vol --label ${SUBJECTS_DIR}/${SUBJECTNAME}/label/${hem}.${atlas}-${i}.label --temp ${SUBJECTS_DIR}/${SUBJECTNAME}.nii --o ${maskoutdir}/${hem}_${i}.nii --reg ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/transforms/FS_2_nifti.dat --hemi ${hem} --subject ${SUBJECTNAME} --proj frac 0 1 0.01 #--fillthresh .5
+						
+						mri_label2vol --label ${SUBJECTS_DIR}/${SUBJECTNAME}/label/${hem}.${atlas}-${i}.label --temp ${SUBJECTS_DIR}/${SUBJECTNAME}.nii --o ${maskoutdir}/${hem}_${i}.nii --reg ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/transforms/nifti_2_FS.dat --hemi ${hem} --subject ${SUBJECTNAME} --proj frac 0 1 0.01 #--fillthresh .5
+
+						mri_binarize --dilate 1 --erode 1 --i ${maskoutdir}/${hem}_${i}.nii --o ${maskoutdir}/${hem}_${i}.nii --min 1 ### erode more than dilate to be stricter
+						### mask with ribbon if not aparc
+						#if ! [ $atlas == "aparc" ]; then
+							mris_calc -o ${maskoutdir}/${hem}_${i}_ribbon.nii ${maskoutdir}/${hem}_${i}.nii mul ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/${hem}.ribbon_mask.nii
+						#fi
+						### give unique numbers
+						fslmaths ${maskoutdir}/${hem}_${i}_ribbon.nii -bin -mul ${i} ${maskoutdir}/${hem}_${i}_ribbon.nii
+					fi
+				done
+				fslmerge -t ${maskoutdir}/${hem}_ALL.nii ${maskoutdir}/${hem}_*.nii
+				fslmaths ${maskoutdir}/${hem}_ALL.nii -Tmax ${maskoutdir}/${hem}_ALL.nii
+			fi
+		done
+	done
+fi
+### https://ggooo.wordpress.com/2014/10/12/extracting-a-volumetric-roi-from-an-annotation-file/
+
+###########################################
+### 4: stats
+for atlas in "aparc.a2009s" "BB38chimp"; do
+	for hem in "lh" "rh"; do
+		if ! [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/stats/${hem}.${atlas}.stats ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/label/${hem}.${atlas}-021.label ] ; then
+			mris_anatomical_stats -a ${atlas} -f ${SUBJECTS_DIR}/${SUBJECTNAME}/stats/${hem}.${atlas}.stats ${SUBJECTNAME} ${hem}
+		fi
+	done
+done
+### https://surfer.nmr.mgh.harvard.edu/fswiki/mris_anatomical_stats
+
+###########################################
+myelinmapoutdir="${SUBJECTS_DIR}/${SUBJECTNAME}/SurfaceProjections"
+mkdir ${myelinmapoutdir}
+### 5: create myelin maps
+echo "creating SURFACE PROJECTIONS"
+for resolution in "0p3" "0p65" "0p8" "0p4"; do #"0p7" "0p3" "0p4"; do ### 0p3 should be the one that was used to downsample to 0p7 but now check for each brain!
+	for contrast in "R1" "R2s" "MTsat" "MTsat_uncorr" "MTR" "A0" "R1_from_3T_registered" "R2s_from_3T_registered" "MTsat_from_3T_registered" "MTR_from_3T_registered" "A0_from_3T_registered" "B1"; do # "A0_rbc" "MP2RAGE"; do
+		for hem in "lh" "rh"; do
+			if [ ${contrast} == "MP2RAGE" ]; then
+			   sourcefile="${SUBJECTS_DIR}/../MP2RAGE/MP2RAGE_R1_brain_masked_reoriented.nii"
+			   regfilename="${myelinmapoutdir}/registration_nifti_2_FS_MP2RAGE.dat"
+			   outfile="${myelinmapoutdir}/${contrast}_${hem}.mgh"
+			else
+			   sourcefile="${SUBJECTS_DIR}/../MPMs_to_use/${contrast}_${resolution}_run01_brain_masked_reoriented.nii"
+			   regfilename="${myelinmapoutdir}/registration_nifti_2_FS_${resolution}.dat"
+			   outfile="${myelinmapoutdir}/${contrast}_${resolution}_midcortical_${hem}.mgh"
+		           outfile2="${myelinmapoutdir}/${contrast}_${resolution}_average_${hem}.mgh"
+		           outfile3="${myelinmapoutdir}/${contrast}_${resolution}_max_${hem}.mgh"
+			   #outfile="${myelinmapoutdir}/${contrast}_${resolution}_MIDC.mgh"
+		           #outfile2="${myelinmapoutdir}/${contrast}_AVG_${resolution}.mgh"
+			   volfile="${myelinmapoutdir}/${contrast}_${resolution}_vol.mgz"
+			fi
+			#if [ -f ${sourcefile} ] && ! [ -f ${outfile3} ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.white ] ; then
+			if [ -f ${sourcefile} ] && ! [ -f ${volfile} ]; then
+				echo "getting registration matrix"
+				if ! [ -f ${regfilename} ]; then
+					tkregister2 --targ ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/orig.mgz --mov ${sourcefile} --regheader --reg ${regfilename} --noedit
+				fi
+				echo "making myelin map"
+				mri_vol2vol --mov ${sourcefile} --reg ${regfilename} --o ${volfile} --no-resample --targ ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/orig.mgz
+			fi
+			if [ -f ${sourcefile} ] && ! [ -f ${outfile3} ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.white ] ; then
+				mri_vol2surf --srcsubject ${SUBJECTNAME} --src ${sourcefile} --out_type mgh --out ${outfile} --srcreg ${regfilename} --hemi ${hem} --projfrac 0.5
+				mri_vol2surf --srcsubject ${SUBJECTNAME} --src ${sourcefile} --out_type mgh --out ${outfile2} --srcreg ${regfilename} --hemi ${hem} --projfrac-avg 0.2 0.8 0.05 ### because pial border is outside brain
+				mri_vol2surf --srcsubject ${SUBJECTNAME} --src ${sourcefile} --out_type mgh --out ${outfile3} --srcreg ${regfilename} --hemi ${hem} --projfrac-max 0.2 0.8 0.05
+
+			fi
+		done
+	done
+
+	### make freeview command file:
+	#if [ -f ${sourcefile} ]; then
+	#	bash ~/Documents/scripts/postmortembrain-mpm/Segmentation/Freesurfer/make_freesurfer_figures_with_command_line "${SUBJECTS_DIR}/${SUBJECTNAME}" ${resolution}
+	#fi
+
+done
+
+###
+
+
+##########################################
+## create profiles
+#https://github.com/kwagstyl/surface_tools
+
+if true; then
+### get layering
+for hem in "lh" "rh"; do
+	if ! [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.KW.equi0.45.pial ]; then
+		echo "doing KW layering now"
+		python3 /data/tu_lippi/Software/surface_tools/surface_tools-master/equivolumetric_surfaces/generate_equivolumetric_surfaces.py --smoothing 0 ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.pial ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.white 21 ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.KW.equi --software freesurfer --subject_id ${SUBJECTNAME}
+		echo "python3 /data/tu_lippi/Software/surface_tools/surface_tools-master/equivolumetric_surfaces/generate_equivolumetric_surfaces.py --smoothing 0 ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.pial ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.white 21 ${SUBJECTS_DIR}/${SUBJECTNAME}/surf/${hem}.KW.equi --software freesurfer --subject_id ${SUBJECTNAME}"
+	fi
+done
+
+### project MPMs to layers in specific regions
+profileoutdir="${SUBJECTS_DIR}/${SUBJECTNAME}/Profiles"
+mkdir ${profileoutdir}
+for resolution in "0p3"; do 
+	for contrast in "R1" "R2s" "MTsat" "MTsat_uncorr" "MTR" "R1_from_3T_registered" "R2s_from_3T_registered" "MTsat_from_3T_registered" "MTR_from_3T_registered" "A0_from_3T_registered" "B1"; do
+		for hem in "lh" "rh"; do 
+			
+			mpm_file_to_use="/data/pt_02101/preprocessed/${id_slash_scan_session}_V2/MPMs_to_use/${contrast}_${resolution}_run01_brain_masked_reoriented.nii"
+
+			if false; then # temp solution
+				mpm_file_to_use="/data/pt_02411/processed/${id_slash_scan_session}/MPMs_to_use/${contrast}_${resolution}_run01_brain_masked_reoriented.nii"
+			fi
+
+			echo $mpm_file_to_use		
+			for depth in 0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0; do
+				
+				### make projection
+				if [ -f ${mpm_file_to_use} ] && ! [ -f ${profileoutdir}/registration_nifti_2_FS_${resolution}.dat ]; then
+					tkregister2 --targ ${SUBJECTS_DIR}/${SUBJECTNAME}/mri/orig.mgz --mov ${mpm_file_to_use} --regheader --reg ${profileoutdir}/registration_nifti_2_FS_${resolution}.dat --noedit
+				fi
+				### BB38
+				for regionnr in {1..38}; do
+					regionnrstr=$(printf "%03d" $regionnr)	
+					projectionfile="${profileoutdir}/equi_${hem}_BB38chimp-${regionnrstr}_${contrast}_${resolution}_${depth}.mgh"
+					if ! [ -f $projectionfile ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/label/${hem}.BB38chimp-${regionnrstr}.label ]; then
+						mri_vol2surf --src ${mpm_file_to_use} --srcreg ${profileoutdir}/registration_nifti_2_FS_${resolution}.dat --out ${projectionfile} --sd ${SUBJECTS_DIR} --srcsubject ${SUBJECTNAME} --hemi $hem --surf KW.equi${depth}.pial --mask ${SUBJECTS_DIR}/${SUBJECTNAME}/label/${hem}.BB38chimp-${regionnrstr}.label --out_type mgh
+					fi
+				done
+				####################################
+				if false; then
+				### vosdewael
+				for regionnr in {0..200}; do
+					regionnrstr=$(printf "%03d" $regionnr)
+					#regionnrstr=$(printf "%03d" $regionnr)	
+					projectionfile="${profileoutdir}/equi_${hem}_vosdewael200-${regionnrstr}_${contrast}_${resolution}_${depth}.mgh"
+					if ! [ -f $projectionfile ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/Vosdewael200/label/${hem}.parc_${regionnr}.label ] ; then
+						mri_vol2surf --src ${mpm_file_to_use} --srcreg ${profileoutdir}/registration_nifti_2_FS_${resolution}.dat --out ${projectionfile} --sd ${SUBJECTS_DIR} --srcsubject ${SUBJECTNAME} --hemi $hem --surf KW.equi${depth}.pial --mask ${SUBJECTS_DIR}/${SUBJECTNAME}/Vosdewael200/label/${hem}.parc_${regionnr}.label --out_type mgh
+					fi
+				done
+				### sjh
+				for regionnr in {1..1015}; do
+					regionnrstr=$(printf "%03d" $regionnr)	
+					projectionfile="${profileoutdir}/equi_${hem}_sjh-${regionnrstr}_${contrast}_${resolution}_${depth}.mgh"
+					echo "${SUBJECTS_DIR}/${SUBJECTNAME}/sjh/${hem}.sjh_${regionnr}.label"
+					if [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/sjh/label/${hem}.sjh_${regionnr}.label ]; then
+						echo "ok"
+					fi
+					if ! [ -f $projectionfile ] && [ -f ${SUBJECTS_DIR}/${SUBJECTNAME}/sjh/label/${hem}.sjh_${regionnr}.label ]; then
+						mri_vol2surf --src ${mpm_file_to_use} --srcreg ${profileoutdir}/registration_nifti_2_FS_${resolution}.dat --out ${projectionfile} --sd ${SUBJECTS_DIR} --srcsubject ${SUBJECTNAME} --hemi $hem --surf KW.equi${depth}.pial --mask ${SUBJECTS_DIR}/${SUBJECTNAME}/sjh/label/${hem}.sjh_${regionnr}.label --out_type mgh
+					fi
+				done
+				fi
+				###########################
+				### no regional mask
+				projectionfile="${profileoutdir}/equi_${hem}_whole_brain_${contrast}_${resolution}_${depth}.mgh"
+				if ! [ -f $projectionfile ]; then
+					mri_vol2surf --src ${mpm_file_to_use} --srcreg ${profileoutdir}/registration_nifti_2_FS_${resolution}.dat --out ${projectionfile} --sd ${SUBJECTS_DIR} --srcsubject ${SUBJECTNAME} --hemi $hem --surf KW.equi${depth}.pial --out_type mgh
+				fi
+			done
+		done
+	done
+done
+fi
+bash ~/Documents/scripts/postmortembrain-mpm/Segmentation/Freesurfer/make_freesurfer_figures_with_command_line ${SUBJECTS_DIR}/${SUBJECTNAME} 0p3 #$orig_resolution_mm
+bash ~/Documents/scripts/postmortembrain-mpm/Segmentation/Freesurfer/make_freesurfer_figures_with_command_line_including3T ${SUBJECTS_DIR}/${SUBJECTNAME} 0p3 #$orig_resolution_mm
+
+					### extract average val (does not work):
+					#if [ -f ${profileoutdir}/equi_${hem}_V1_${contrast}_${resolution}_${depth}.mgh ]; then
+					#	yes | rm ${profileoutdir}/killme*.dat
+					#	mri_segstats --i ${profileoutdir}/equi_${hem}_V1_${contrast}_${resolution}_${depth}.mgh --seg ${profileoutdir}/equi_${hem}_V1_${contrast}_${resolution}_${depth}.mgh --avgwf ${profileoutdir}/killme.dat
+					#	echo "mri_segstats --i ${profileoutdir}/equi_${hem}_V1_${contrast}_${resolution}_${depth}.mgh --seg ${profileoutdir}/equi_${hem}_V1_${contrast}_${resolution}_${depth}.mgh --avgwf ${profileoutdir}/killme.dat"						
+						#mri_segstats --i ${profileoutdir}/equi_${hem}_V1_${contrast}_${resolution}_${depth}.mgh --seg ${profileoutdir}/equi_${hem}_V1_${contrast}_${resolution}_${depth}.mgh --robust 25 --avgwf ${profileoutdir}/killme2.dat
+						### store in file
+					#	value=`cat ${profileoutdir}/killme.dat`
+					#	echo "value is ${value}"
+					#	echo "${hem}; ${resolution}; ${contrast}; ${depth}; ${value}" >> ${profilefile}
+					#	value=`cat ${profileoutdir}/killme2.dat`
+					#	echo "value is ${value}"
+					#	echo "${hem}; ${resolution}; ${contrast}; ${depth}; ${value}" >> ${profilefile_robust}
+					#fi
+
+#freeview -f surf/lh.inflated:overlay=Profiles/equi_rh_V1_R2s_rbc_0p7_0.5.mgh
+
+ ### projfrac gives midcortical surface
+### https://surfer.nmr.mgh.harvard.edu/fswiki/mri_vol2surf
+
+
+
+###https://andysbrainbook.readthedocs.io/en/latest/FreeSurfer/FS_ShortCourse/FS_07_FSGD.html
+
+#################################
+#################################
+#################################
+### geht nicht:
+#cp /data/hu_lippi/Documents/scripts/Primate_resources/DonahueEtAl2018_PNAS_zlVX/chimpanzee/chimpAnnotMed.annot /data/pt_02101/preprocessed/004_C_C_GROAT_ID12128/mr/191018_Magnetom_7T_32Ch_WB/freesurfer/${SUBJECTNAME}/label
+
+#freeview -f surf/lh.pial:annot=chimpAnnotMed.annot:name=CHIMP:visible=0 surf/lh.inflated:overlay=surf/lh.thickness:overlay_threshold=0.1,3::name=inflated_thickness:visible=0 surf/lh.inflated:visible=0 surf/lh.pial surf/rh.pial:annot=chimpAnnotMed.annot:name=CHIMP:visible=0 surf/rh.inflated:overlay=surf/rh.thickness:overlay_threshold=0.1,3::name=inflated_thickness:visible=0 surf/rh.inflated:visible=0 surf/rh.pial --viewport 3d
+
+
+
+
+

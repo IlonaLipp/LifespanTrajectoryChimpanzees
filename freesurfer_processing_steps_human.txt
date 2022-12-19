@@ -1,0 +1,43 @@
+﻿ssh silbermond  ## Neurophysics compute server
+FREESURFER  ## calls freesurfer/6.0.0/ubuntu-xenial-amd64/bin
+export SUBJECTS_DIR=
+export LD_LIBRARY_PATH=
+PATH=$PATH:/a/software/afni/currentversion.ubuntu-precise-amd64/ubuntu-precise-amd64/
+
+chmod a+x FS_pipeline/PreProcScriptMPM_subjList_Delay.csh
+
+csh
+foreach id (sub-01 sub-02 sub-03 sub-04 sub-05 sub-06 sub-07 sub-08 sub-09 sub-10 sub-11 sub-12 sub-13 sub-14 sub-15)
+FS_pipeline/PreProcScriptMPM_subjList_Delay.csh $SUBJECTS_DIR $id
+end
+
+exit
+export SUBJECTS_DIR=freesurfer_recons/
+csh
+foreach sub (sub-01 sub-02 sub-03 sub-04 sub-05 sub-06 sub-07 sub-08 sub-09 sub-10 sub-11 sub-12 sub-13 sub-14 sub-15)
+recon-all -i freesurfer_recons/$sub/$sub-synth-trunc-scale.nii.gz -autorecon1 -noskullstrip -sd $SUBJECTS_DIR -s $sub-1mm
+end 
+
+Run maskingSPM_Script in Matlab
+
+foreach sub (sub-01 sub-02 sub-03 sub-04 sub-05 sub-06 sub-07 sub-08 sub-09 sub-10 sub-11 sub-12 sub-13 sub-14 sub-15)
+cd $SUBJECTS_DIR/$sub-1mm/mri/
+mri_convert brainmask.nii brainmask.mgz
+cp brainmask.mgz brain.mgz
+end
+
+foreach sub (sub-01 sub-02 sub-03 sub-04 sub-05 sub-06 sub-07 sub-08 sub-09 sub-10 sub-11 sub-12 sub-13 sub-14 sub-15) 
+	recon-all -autorecon2 -sd $SUBJECTS_DIR -s $sub-1mm -parallel
+	recon-all -autorecon3 -sd $SUBJECTS_DIR -s $sub-1mm -parallel
+end
+
+csh
+foreach sub (sub-01 sub-02 sub-03 sub-04 sub-05 sub-06 sub-07 sub-08 sub-09 sub-10 sub-11 sub-12 sub-13 sub-14 sub-15)
+tkregister2 --mov derivatives/MPMs_wOLS-true_rfcorr-percon/$sub/Results/$sub*_R1.nii --s $sub-1mm --regheader --reg  $SUBJECTS_DIR/$sub-1mm/mri/transforms/MPM2lores.dat
+end
+
+
+
+
+
+

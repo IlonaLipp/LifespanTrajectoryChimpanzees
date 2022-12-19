@@ -1,0 +1,260 @@
+#!/bin/bash
+
+overall_result_dir="Cortical_analysis/group_freesurfer"
+mkdir ${overall_result_dir}
+cd ${overall_result_dir}
+mkdir ${overall_result_dir}/Setups
+### Start fsgd file
+### https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat
+### https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdfOSGM
+
+for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_children"; do
+
+	### make separate fsgd for each contrast
+	for con in "MTsat" "R1" "R2s" "thickness"; do
+		fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
+		yes | rm ${fsgd_file}
+		echo "GroupDescriptorFile 1" >> ${fsgd_file}
+		echo "Title OSGM" >> ${fsgd_file} ### previous JustAverage or something like that
+		echo "Class Main" >> ${fsgd_file} ### name of category
+		echo "Variables Age" >> ${fsgd_file} ### new
+		subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
+		yes | rm ${subjlist_file}
+	done
+
+	### contrast files
+	agemtx="${overall_result_dir}/Setups/age.mtx"
+	agenegmtx="${overall_result_dir}/Setups/ageneg.mtx"
+	mainmtx="${overall_result_dir}/Setups/group_average.mtx"
+	yes | rm $agemtx $mainmtx ${agenegmtx}
+	echo "0 1" >> ${agemtx}
+	echo "0 -1" >> ${agenegmtx}
+	echo "1 0" >> ${mainmtx}
+
+	### Copy all relevant freesurfer folders in to one results directory
+	echo "copying directories over"
+	for subj in ...; do
+
+		### put ages in very complicated manner, adult from 17
+		if [ ${subj:0:3} == "001" ]; then
+			age=6
+			adult=0
+		elif [ ${subj:0:3} == "004" ]; then
+			age=34
+			adult=1
+		elif [ ${subj:0:3} == "005" ]; then
+			age=1.75
+			adult=0
+		elif [ ${subj:0:3} == "007" ]; then
+			age=47
+			adult=1
+		elif [ ${subj:0:3} == "008" ]; then
+			age=30
+			adult=1
+		elif [ ${subj:0:3} == "009" ]; then
+			age=13
+			adult=0
+		elif [ ${subj:0:3} == "011" ]; then
+			age=1.5
+			adult=0
+		elif [ ${subj:0:3} == "014" ]; then
+			age=40
+			adult=1
+		elif [ ${subj:0:3} == "015" ]; then
+			age=2.75
+			adult=0
+		elif [ ${subj:0:3} == "016" ]; then
+			age=44
+			adult=1
+		elif [ ${subj:0:3} == "018" ]; then
+			age=43
+			adult=1
+		elif [ ${subj:0:3} == "027" ]; then
+			age=45
+			adult=1
+		elif [ ${subj:0:3} == "029" ]; then
+			age=52
+			adult=1
+		elif [ ${subj:0:3} == "032" ]; then
+			age=12
+			adult=0
+		elif [ ${subj:0:3} == "033" ]; then
+			age=17.5
+			adult=1
+		fi
+		echo "$subj is $age years old"
+		###
+
+		if [ ${subj} == "004" ] || [ ${subj} == "032" ] || [ ${subj} == "033" ]; then
+			exclude_r1=1
+		else
+			exclude_r1=0
+		fi
+
+
+		freesurfer_folder="${subj}/freesurfer/MTsat_0p3mm_downsampled_to_0p7mm_FSV7_hires"
+		short_id=${subj:0:3}
+		to_copy_folder="${overall_result_dir}/Subj_${short_id}"
+		if ! [ -d ${to_copy_folder} ]; then
+			echo "copy ${freesurfer_folder} ${to_copy_folder}"
+			cp -R ${freesurfer_folder} ${to_copy_folder}
+		fi
+
+		for con in "MTsat" "R1" "R2s" "thickness"; do
+			subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
+			fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
+
+			if [ ${type} == "main" ]; then
+				if  [ ${exclude_r1} == 1 ] && [ ${con:0:2} == "R1" ]; then
+					echo "excluding subject $subj and contrast $con"
+				elif [ ${exclude_3t} == 1 ] && [ "${con: -1}" == "d" ]; then
+					echo "excluding subject $subj and contrast $con"
+				else
+					echo "Input Subj_${short_id} Main $age" >> ${fsgd_file}
+					echo "Subj_${short_id}" >> ${subjlist_file}
+				fi
+			elif [ ${type} == "main_just_adults" ]; then
+				if  [ ${adult} == 1 ]; then
+					if  [ ${exclude_r1} == 1 ] && [ ${con:0:2} == "R1" ]; then
+						echo "excluding subject $subj and contrast $con"
+					elif [ ${exclude_3t} == 1 ] && [ "${con: -1}" == "d" ]; then
+						echo "excluding subject $subj and contrast $con"
+					else
+						echo "Input Subj_${short_id} Main $age" >> ${fsgd_file}
+						echo "Subj_${short_id}" >> ${subjlist_file}
+					fi
+				else 
+					echo "excluding subject $subj and contrast $con because not adult"
+				fi
+			elif [ ${type} == "main_just_children" ]; then
+				if  [ ${adult} == 0 ]; then
+					if  [ ${exclude_r1} == 1 ] && [ ${con:0:2} == "R1" ]; then
+						echo "excluding subject $subj and contrast $con"
+					elif [ ${exclude_3t} == 1 ] && [ "${con: -1}" == "d" ]; then
+						echo "excluding subject $subj and contrast $con"
+					else
+						echo "Input Subj_${short_id} Main $age" >> ${fsgd_file}
+						echo "Subj_${short_id}" >> ${subjlist_file}
+					fi
+				else 
+					echo "excluding subject $subj and contrast $con because not child"
+				fi
+			fi
+
+		done
+		### copy over nifti files
+		mpm_folder="${subj}/MPMs_to_use" 
+		for con in "MTsat" "R1" "R2s"; do
+			new_file="${to_copy_folder}/SurfaceProjections/${con}_0p3_vol.nii"
+			if ! [ -f ${new_file} ]; then
+				cp "${mpm_folder}/${con}_0p3_run01_brain_masked_reoriented.nii" ${new_file}
+			fi
+		done
+	done
+
+	### Prepare data for group analysis
+	export FREESURFER_HOME="freesurfer/7.1.0/ubuntu-bionic-amd64"
+	export SUBJECTS_DIR=${overall_result_dir}
+	if ! [ -d ${SUBJECTS_DIR}/fsaverage ]; then
+		cp -R freesurfer/6.0.0/ubuntu-xenial-amd64/subjects/fsaverage ${SUBJECTS_DIR}
+	fi
+
+
+	### loop over what target to use
+	echo "DOING STATS"
+	for target in "fsaverage"; do #"Subj_027" "Subj_029" "fsaverage"; do
+
+		result_dir="${overall_result_dir}/target_${target}"
+		mkdir $result_dir
+		echo "result dir is $result_dir"
+
+		if ! [ -f ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh ]; then
+			fsgd_file="${overall_result_dir}/Setups/${type}_for_thickness.fsgd"
+			mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi lh --meas thickness --out ${result_dir}/target_${target}_lh.${type}_thickness_avg.mgh # --mean # --std
+			mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi rh --meas thickness --out ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh #--mean
+		fi
+		
+			#mris_preproc --fsgd ${fsgd_file} --target fsaverage --hemi lh --out lh.${type}_MTsat --mean --iv */SurfaceProjections/MTsat_0p3_midcortical_lh.mgh
+
+		### make our own template
+		#make_average_subject --out MPI_template --f ${subjlist_file}
+
+		for cd in "avg" "0.2" "0.35" "0.5" "0.65" "0.8"; do 
+			### mri_preproc MPMs
+			for con in "thickness" "MTsat" "R1" "R2s"; do
+				for hem in "lh" "rh"; do
+					### mris_preproc
+					commandfile="${result_dir}/target_${target}_mris_preproc_command_${con}_${hem}_${cd}"
+					yes | rm ${commandfile}
+					fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
+					echo -e "mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi ${hem} --out ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh \c" >> ${commandfile}
+		#			for fol in `ls -d ${result_dir}/Subj*`; do
+					subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
+					if [ $cd == "avg" ]; then
+						for fol in `cat ${subjlist_file}`; do
+							#echo -e "--is $fol/SurfaceProjections/${con}_0p3_midcortical_${hem}.mgh \c" >> $commandfile
+							echo -e "--is $fol/SurfaceProjections/${con}_0p3_average_${hem}_CORRECTED.mgh \c" >> $commandfile
+						done
+					else
+						for fol in `cat ${subjlist_file}`; do
+							#echo -e "--is $fol/SurfaceProjections/${con}_0p3_midcortical_${hem}.mgh \c" >> $commandfile
+							echo -e "--is $fol/SurfaceProjections/equi_${hem}_whole_brain_${con}_0p3_${cd}_CORRECTED.mgh \c" >> $commandfile
+						done
+					fi
+					if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh ]; then
+						bash ${commandfile}
+					fi
+				done
+			done
+
+			for smoothing in "03"; do 
+				### further process
+				for con in "MTsat" "R1" "R2s" "thickness"; do
+					for hem in "lh" "rh"; do
+						echo "smoothing"
+						### smooth
+						if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh ]; then
+							mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh 
+							echo "mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh "
+						fi
+						### glmfit
+						if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm/beta.mgh ]; then
+							mri_glmfit --y ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh --surf ${target} ${hem} --osgm --glmdir ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm --cortex
+						fi
+					done
+				done
+
+				### make freeview command
+				for surftype in "pial" "white" "inflated"; do
+					commandfilename="${result_dir}/freeviewcommand_target_${target}_${surftype}_CD${cd}_smoothing${smoothing}"
+					commandfilename_qc="${result_dir}/freeviewcommand_target_${target}_${surftype}_CD${cd}_smoothing${smoothing}_QC_4D"
+					yes | rm $commandfilename $commandfilename_qc ${commandfilename_age}
+					printf "freeview -f " >> ${commandfilename}
+					printf "freeview -f " >> ${commandfilename_qc}
+					#printf "freeview -f " >> ${commandfilename_age}
+					for hem in "lh" "rh"; do
+						for con in "MTsat" "R2s" "R1" "thickness"; do
+							if [ ${con} == "MTsat" ] ; then
+								range="2,5"
+							elif [ ${con} == "R2s" ] ; then
+								range="15,30"
+							elif [ ${con} == "R1" ]; then
+								range="1.3,3"
+							elif [ ${con} == "thickness" ]; then
+								range="1.6,3.2"
+							fi
+							#printf "${target}/surf/${hem}.${surftype}:overlay=../../target_${target}_${hem}.${type}_${con}_sm${smoothing}.osgm/beta.mgh:overlay_threshold=${range}::name=${con}_${hem}:visible=0::overlay_color=colorwheel,inverse " >> ${commandfilename}
+							printf "../${target}/surf/${hem}.${surftype}:overlay=../../target_${target}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}_OUTPUT/beta.mgh:overlay_threshold=${range}::name=${con}_${hem}:visible=0::overlay_color=colorwheel,inverse " >> ${commandfilename}
+							printf "../${target}/surf/${hem}.${surftype}:overlay=../../target_${target}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh:overlay_threshold=${range}::name=${con}_${hem}:visible=0::overlay_color=colorwheel,inverse " >> ${commandfilename_qc}
+						done
+						### add thickness
+						#printf "fsaverage/surf/${hem}.${surftype}:overlay=${hem}.${type}_thickness.mgh:overlay_threshold=1,3::name=thickness_${hem}:visible=0::overlay_color=colorwheel,inverse::overlay_smooth=4 " >> ${commandfilename}
+					done
+
+				done
+			done
+		done
+
+	done
+done
+
