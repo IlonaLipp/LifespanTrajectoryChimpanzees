@@ -1,12 +1,21 @@
 #!/bin/bash
-### needs to be run after the separate group_freesurfer for humans and chimps for practical reasons (written in a lazy way that just copies over folders)
 
+# This script performs FreeSurfer group analysis comparing human and chimpanzee brain data:
+# - Combines data from separate human and chimp analyses
+# - Creates group descriptor (FSGD) files for species comparison
+# - Processes cortical measurements (thickness, R1, MTsat, R2s)
+# - Performs surface-based group statistics using mris_preproc and mri_glmfit
+# - Handles both averaged and depth-specific (0.2-0.8) data
+# - Includes ex-vivo to in-vivo conversion for chimp data
+# - Uses BB38 atlas for regional analysis
+
+# Set up main analysis directory
 overall_result_dir="Cortical_analysis/group_freesurfer/chimps_vs_humans"
 mkdir $overall_result_dir
 cd $overall_result_dir
 
-### get subjectlist chimps
-for i in `cat "Cortical_analysis/group_freesurfer/main_just_adults_subjlist_for_thickness"`; do ### previously wrong
+# Copy over chimp subject data
+for i in `cat "Cortical_analysis/group_freesurfer/main_just_adults_subjlist_for_thickness"`; do
 	echo $i
 	old_folder="Cortical_analysis/group_freesurfer/$i"
 	new_folder="${overall_result_dir}/Chimp_${i}"
@@ -14,7 +23,8 @@ for i in `cat "Cortical_analysis/group_freesurfer/main_just_adults_subjlist_for_
 		cp -R ${old_folder} ${new_folder}
 	fi
 done
-### get subjectlist humans
+
+# Copy over human subject data 
 for i in `cat "Cortical_analysis/group_freesurfer/humans/main_subjlist_for_thickness"`; do
 	echo $i
 	old_folder="Cortical_analysis/group_freesurfer/humans/$i"
@@ -24,8 +34,7 @@ for i in `cat "Cortical_analysis/group_freesurfer/humans/main_subjlist_for_thick
 	fi
 done
 
-
-### Prepare data for group analysis
+# Set up FreeSurfer environment
 export FREESURFER_HOME="freesurfer/7.1.0/ubuntu-bionic-amd64"
 export SUBJECTS_DIR=${overall_result_dir}
 if ! [ -d ${SUBJECTS_DIR}/fsaverage ]; then
@@ -34,25 +43,26 @@ fi
 
 mkdir ${overall_result_dir}/Setups
 
-### make separate fsgd for each contrast
+# Create FSGD files for each contrast type
 for con in "MTsat" "R1" "R2s" "thickness"; do
 	
-	### define file name and start writing stuff in
+	# Initialize FSGD file
 	fsgd_file="${overall_result_dir}/Setups/fsgd_for_${con}.fsgd"
 	yes | rm ${fsgd_file}
 	echo "GroupDescriptorFile 1" >> ${fsgd_file}
-	echo "Title Species_Comp" >> ${fsgd_file} ### previous JustAverage or something like that
-	echo "Class Chimp" >> ${fsgd_file} ### name of category
-	echo "Class Human" >> ${fsgd_file} ### name of category
+	echo "Title Species_Comp" >> ${fsgd_file}
+	echo "Class Chimp" >> ${fsgd_file}
+	echo "Class Human" >> ${fsgd_file}
 	subjlist_file="${overall_result_dir}/subjlist_for_${con}"
 	yes | rm ${subjlist_file}
-	### compile subjectinformation in file
-	### 1. chimps
-	for i in `cat "Cortical_analysis/group_freesurfer/main_just_adults_subjlist_for_${con}"`; do ### previouslz wrong 
+
+	# Add chimp subjects to FSGD
+	for i in `cat "Cortical_analysis/group_freesurfer/main_just_adults_subjlist_for_${con}"`; do
 		echo "Input Chimp_${i} Chimp" >> ${fsgd_file}
 		echo "Chimp_${i}" >> ${subjlist_file}
 	done
-	### 2. humans
+
+	# Add human subjects to FSGD (handle special case for R2s)
 	if [ ${con} == "R2s" ]; then
 		fname="Cortical_analysis/group_freesurfer/humans/main_subjlist_for_R2s_WOLS"
 	else
@@ -64,7 +74,7 @@ for con in "MTsat" "R1" "R2s" "thickness"; do
 	done
 done
 
-### contrast files
+# Create contrast matrices for statistical analysis
 groupcompmtx="${overall_result_dir}/Setups/chimps_vs_humans.mtx"
 groupcompmtx2="${overall_result_dir}/Setups/humans_vs_chimps.mtx"
 chimpsonlymtx="${overall_result_dir}/Setups/only_chimps.mtx"
@@ -75,39 +85,43 @@ echo "-1 1" >> ${groupcompmtx2}
 echo "1 0" >> ${chimpsonlymtx}
 echo "0 1" >> ${humansonlymtx}
 
-###
+# Set up analysis target and results directory
 target="fsaverage";
 result_dir="${overall_result_dir}/target_${target}"
 mkdir $result_dir
 
-
+# Process cortical thickness data if not already done
 if ! [ -f ${result_dir}/target_${target}_rh.thickness_avg.mgh ]; then
 	fsgd_file="${overall_result_dir}/Setups/fsgd_for_thickness.fsgd"
-	mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi lh --meas thickness --out ${result_dir}/target_${target}_lh.thickness_avg.mgh # --mean # --std
-	mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi rh --meas thickness --out ${result_dir}/target_${target}_rh.thickness_avg.mgh #--mean
+	mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi lh --meas thickness --out ${result_dir}/target_${target}_lh.thickness_avg.mgh
+	mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi rh --meas thickness --out ${result_dir}/target_${target}_rh.thickness_avg.mgh
 fi
 
+# Process data for different cortical depths
+for cd in "avg" "0.5"; do # Additional depths available: "0.2" "0.35" "0.65" "0.8"
 
-for cd in "avg" "0.5"; do #### currently, the ex vivo in vivo conversion is only being done for the files at 0.5    "0.2" "0.35"  "0.65" "0.8"; do 
-
-	### mri_preproc MPMs
+	# Process each contrast type and hemisphere
 	for con in "thickness" "MTsat" "R1" "R2s"; do
 		for hem in "lh" "rh"; do
-			### mris_preproc
+			# Set up mris_preproc command
 			commandfile="${result_dir}/target_${target}_mris_preproc_command_${con}_${hem}_${cd}"
 			yes | rm ${commandfile}
 			fsgd_file="${overall_result_dir}/Setups/fsgd_for_${con}.fsgd"
 			echo -e "mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi ${hem} --out ${result_dir}/target_${target}_${hem}.${con}_${cd}.mgh \c" >> ${commandfile}
 			subjlist_file="${overall_result_dir}/subjlist_for_${con}"
+
+			# Handle average vs depth-specific processing
 			if [ $cd == "avg" ]; then
 				for fol in `cat ${subjlist_file}`; do
 					echo -e "--is $fol/SurfaceProjections/${con}_0p3_average_${hem}_CORRECTED.mgh \c" >> $commandfile
 				done
 			else
 				for fol in `cat ${subjlist_file}`; do
-					if [ ${fol:0:3} == "Chi" ]; then ### we want to compare the scaled MPMs, so the ones that have been converted from ex vivo to in vivo like
+					if [ ${fol:0:3} == "Chi" ]; then
+						# Use converted ex-vivo to in-vivo data for chimps
 						echo -e "--is $fol/SurfaceProjections/${con}_0p3_${cd}_${hem}_converted_to_in_vivo_CORRECTED.mgh \c" >> $commandfile
 					elif [ ${fol:0:3} == "Hum" ]; then
+						# Handle special case for human R2s data
 						if [ ${con} == "R2s" ]; then
 							echo -e "--is $fol/MPMvals/${hem}_R2s_WOLS_${cd}.mgh \c" >> $commandfile
 						else
@@ -116,31 +130,33 @@ for cd in "avg" "0.5"; do #### currently, the ex vivo in vivo conversion is only
 					fi
 				done
 			fi
+
+			# Run mris_preproc if output doesn't exist
 			if ! [ -f ${result_dir}/target_${target}_${hem}.${con}_${cd}.mgh ]; then
 				bash ${commandfile}
 			fi
 		done
 	done
 
+	# Apply smoothing and perform statistical analysis
 	for smoothing in "03"; do 
-		### further process
 		for con in "MTsat" "R1" "R2s" "thickness"; do
-			fsgd_file="${overall_result_dir}/Setups/fsgd_for_${con}.fsgd" ### redefine
+			fsgd_file="${overall_result_dir}/Setups/fsgd_for_${con}.fsgd"
 			for hem in "lh" "rh"; do
 				echo "smoothing"
-				### smooth
+				# Apply surface smoothing
 				if ! [ -f ${result_dir}/target_${target}_${hem}._${con}_${cd}_sm${smoothing}.mgh ]; then
 					mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.mgh 
 					echo "mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.mgh "
 				fi
+
+				# Perform GLM analysis if not already done
 				if [ -f "${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.osgm/humans_vs_chimps/cache.th30.abs.sig.cluster.mgh" ]; then
-					
 					mri_glmfit --y ${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.mgh --surf ${target} ${hem} --glmdir ${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.osgm --cortex --fsgd ${fsgd_file} --C ${groupcompmtx} --C ${groupcompmtx2} --C ${chimpsonlymtx} --C ${humansonlymtx}
 				
-					#mri_glmfit-sim --glmdir ${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.osgm --cache 1.3 abs --cwp 0.05 --2spaces #/chimps_vs_humans 
+					# Apply BB38 atlas and run cluster analysis
 					cp /data/pt_02101/results/Cortical_analysis/group_freesurfer/fsaverage/label/${hem}.BB38chimp.annot $overall_result_dir/fsaverage/label
-					mri_glmfit-sim --glmdir ${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.osgm --cache 3 abs --cwp 0.05 --2spaces --annot BB38chimp #/chimps_vs_humans 
-
+					mri_glmfit-sim --glmdir ${result_dir}/target_${target}_${hem}.${con}_${cd}_sm${smoothing}.osgm --cache 3 abs --cwp 0.05 --2spaces --annot BB38chimp
 				fi
 
 			done

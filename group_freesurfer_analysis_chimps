@@ -1,41 +1,51 @@
 #!/bin/bash
 
+# This script performs FreeSurfer group analysis on chimpanzee brain data:
+# - Creates group descriptor (FSGD) files for different contrasts (MTsat, R1, R2s, thickness)
+# - Processes both adult and child chimps, tracking ages
+# - Copies and organizes FreeSurfer and MPM data into group analysis structure  
+# - Performs surface-based group statistics using mris_preproc and mri_glmfit
+# - Generates visualization commands for quality control
+# - Processes data at different cortical depths (0.2-0.8) and smoothing levels
+
 overall_result_dir="Cortical_analysis/group_freesurfer"
 mkdir ${overall_result_dir}
 cd ${overall_result_dir}
 mkdir ${overall_result_dir}/Setups
-### Start fsgd file
-### https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat
-### https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdfOSGM
 
-for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_children"; do
+# Create FSGD (FreeSurfer Group Descriptor) files for group analysis
+# See: https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat
+#      https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdfOSGM
 
-	### make separate fsgd for each contrast
+# Process different analysis types (currently just adult chimps)
+for type in "main_just_adults"; do # Other options: "main", "main_just_children"
+
+	# Create separate FSGD files for each contrast/measurement
 	for con in "MTsat" "R1" "R2s" "thickness"; do
 		fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
 		yes | rm ${fsgd_file}
 		echo "GroupDescriptorFile 1" >> ${fsgd_file}
-		echo "Title OSGM" >> ${fsgd_file} ### previous JustAverage or something like that
-		echo "Class Main" >> ${fsgd_file} ### name of category
-		echo "Variables Age" >> ${fsgd_file} ### new
+		echo "Title OSGM" >> ${fsgd_file}
+		echo "Class Main" >> ${fsgd_file}
+		echo "Variables Age" >> ${fsgd_file}
 		subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
 		yes | rm ${subjlist_file}
 	done
 
-	### contrast files
-	agemtx="${overall_result_dir}/Setups/age.mtx"
-	agenegmtx="${overall_result_dir}/Setups/ageneg.mtx"
-	mainmtx="${overall_result_dir}/Setups/group_average.mtx"
+	# Set up design matrices for different analyses
+	agemtx="${overall_result_dir}/Setups/age.mtx"        # Positive age effect
+	agenegmtx="${overall_result_dir}/Setups/ageneg.mtx"  # Negative age effect  
+	mainmtx="${overall_result_dir}/Setups/group_average.mtx"  # Group average
 	yes | rm $agemtx $mainmtx ${agenegmtx}
 	echo "0 1" >> ${agemtx}
 	echo "0 -1" >> ${agenegmtx}
 	echo "1 0" >> ${mainmtx}
 
-	### Copy all relevant freesurfer folders in to one results directory
+	# Copy FreeSurfer directories and assign subject metadata
 	echo "copying directories over"
 	for subj in ...; do
 
-		### put ages in very complicated manner, adult from 17
+		# Assign age and adult/child status for each subject
 		if [ ${subj:0:3} == "001" ]; then
 			age=6
 			adult=0
@@ -83,8 +93,8 @@ for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_childr
 			adult=1
 		fi
 		echo "$subj is $age years old"
-		###
 
+		# Flag subjects to exclude from R1 analysis
 		if [ ${subj} == "004" ] || [ ${subj} == "032" ] || [ ${subj} == "033" ]; then
 			exclude_r1=1
 		else
@@ -100,20 +110,25 @@ for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_childr
 			cp -R ${freesurfer_folder} ${to_copy_folder}
 		fi
 
+		# Loop through contrasts (MTsat, R1, R2s, thickness) to create subject lists and FSGD files
+		# FSGD files contain subject info for FreeSurfer group analysis
 		for con in "MTsat" "R1" "R2s" "thickness"; do
 			subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
 			fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
 
 			if [ ${type} == "main" ]; then
+				# For main analysis, exclude subjects based on R1 and 3T flags
 				if  [ ${exclude_r1} == 1 ] && [ ${con:0:2} == "R1" ]; then
 					echo "excluding subject $subj and contrast $con"
 				elif [ ${exclude_3t} == 1 ] && [ "${con: -1}" == "d" ]; then
 					echo "excluding subject $subj and contrast $con"
 				else
+					# Add subject to FSGD and subject list files
 					echo "Input Subj_${short_id} Main $age" >> ${fsgd_file}
 					echo "Subj_${short_id}" >> ${subjlist_file}
 				fi
 			elif [ ${type} == "main_just_adults" ]; then
+				# For adults-only analysis
 				if  [ ${adult} == 1 ]; then
 					if  [ ${exclude_r1} == 1 ] && [ ${con:0:2} == "R1" ]; then
 						echo "excluding subject $subj and contrast $con"
@@ -127,6 +142,7 @@ for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_childr
 					echo "excluding subject $subj and contrast $con because not adult"
 				fi
 			elif [ ${type} == "main_just_children" ]; then
+				# For children-only analysis
 				if  [ ${adult} == 0 ]; then
 					if  [ ${exclude_r1} == 1 ] && [ ${con:0:2} == "R1" ]; then
 						echo "excluding subject $subj and contrast $con"
@@ -160,6 +176,12 @@ for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_childr
 	fi
 
 
+	### This section performs group-level FreeSurfer analysis:
+	### 1. Projects individual subject data to target space (fsaverage)
+	### 2. Processes cortical thickness and MPM data at different cortical depths
+	### 3. Smooths and performs statistical analysis
+	### 4. Creates visualization commands for quality control
+
 	### loop over what target to use
 	echo "DOING STATS"
 	for target in "fsaverage"; do #"Subj_027" "Subj_029" "fsaverage"; do
@@ -168,72 +190,71 @@ for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_childr
 		mkdir $result_dir
 		echo "result dir is $result_dir"
 
+		# Process cortical thickness if not already done
 		if ! [ -f ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh ]; then
 			fsgd_file="${overall_result_dir}/Setups/${type}_for_thickness.fsgd"
 			mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi lh --meas thickness --out ${result_dir}/target_${target}_lh.${type}_thickness_avg.mgh # --mean # --std
 			mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi rh --meas thickness --out ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh #--mean
 		fi
-		
-			#mris_preproc --fsgd ${fsgd_file} --target fsaverage --hemi lh --out lh.${type}_MTsat --mean --iv */SurfaceProjections/MTsat_0p3_midcortical_lh.mgh
 
-		### make our own template
-		#make_average_subject --out MPI_template --f ${subjlist_file}
-
+		# Loop through cortical depths (avg = average across depths)
 		for cd in "avg" "0.2" "0.35" "0.5" "0.65" "0.8"; do 
-			### mri_preproc MPMs
+			### Process MPMs and thickness at each depth
 			for con in "thickness" "MTsat" "R1" "R2s"; do
 				for hem in "lh" "rh"; do
-					### mris_preproc
+					### Create and run mris_preproc commands
 					commandfile="${result_dir}/target_${target}_mris_preproc_command_${con}_${hem}_${cd}"
 					yes | rm ${commandfile}
 					fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
 					echo -e "mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi ${hem} --out ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh \c" >> ${commandfile}
-		#			for fol in `ls -d ${result_dir}/Subj*`; do
+
 					subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
+					# Handle average vs specific cortical depth
 					if [ $cd == "avg" ]; then
 						for fol in `cat ${subjlist_file}`; do
-							#echo -e "--is $fol/SurfaceProjections/${con}_0p3_midcortical_${hem}.mgh \c" >> $commandfile
 							echo -e "--is $fol/SurfaceProjections/${con}_0p3_average_${hem}_CORRECTED.mgh \c" >> $commandfile
 						done
 					else
 						for fol in `cat ${subjlist_file}`; do
-							#echo -e "--is $fol/SurfaceProjections/${con}_0p3_midcortical_${hem}.mgh \c" >> $commandfile
 							echo -e "--is $fol/SurfaceProjections/equi_${hem}_whole_brain_${con}_0p3_${cd}_CORRECTED.mgh \c" >> $commandfile
 						done
 					fi
+
+					# Run preprocessing if output doesn't exist
 					if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh ]; then
 						bash ${commandfile}
 					fi
 				done
 			done
 
+			# Apply smoothing and statistical analysis
 			for smoothing in "03"; do 
-				### further process
 				for con in "MTsat" "R1" "R2s" "thickness"; do
 					for hem in "lh" "rh"; do
 						echo "smoothing"
-						### smooth
+						### Smooth the surface data
 						if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh ]; then
 							mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh 
 							echo "mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh "
 						fi
-						### glmfit
+						### Run GLM analysis
 						if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm/beta.mgh ]; then
 							mri_glmfit --y ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh --surf ${target} ${hem} --osgm --glmdir ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm --cortex
 						fi
 					done
 				done
 
-				### make freeview command
+				### Generate freeview visualization commands for different surface types
 				for surftype in "pial" "white" "inflated"; do
 					commandfilename="${result_dir}/freeviewcommand_target_${target}_${surftype}_CD${cd}_smoothing${smoothing}"
 					commandfilename_qc="${result_dir}/freeviewcommand_target_${target}_${surftype}_CD${cd}_smoothing${smoothing}_QC_4D"
 					yes | rm $commandfilename $commandfilename_qc ${commandfilename_age}
 					printf "freeview -f " >> ${commandfilename}
 					printf "freeview -f " >> ${commandfilename_qc}
-					#printf "freeview -f " >> ${commandfilename_age}
+
 					for hem in "lh" "rh"; do
 						for con in "MTsat" "R2s" "R1" "thickness"; do
+							# Set appropriate visualization ranges for each contrast
 							if [ ${con} == "MTsat" ] ; then
 								range="2,5"
 							elif [ ${con} == "R2s" ] ; then
@@ -243,12 +264,9 @@ for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_childr
 							elif [ ${con} == "thickness" ]; then
 								range="1.6,3.2"
 							fi
-							#printf "${target}/surf/${hem}.${surftype}:overlay=../../target_${target}_${hem}.${type}_${con}_sm${smoothing}.osgm/beta.mgh:overlay_threshold=${range}::name=${con}_${hem}:visible=0::overlay_color=colorwheel,inverse " >> ${commandfilename}
 							printf "../${target}/surf/${hem}.${surftype}:overlay=../../target_${target}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}_OUTPUT/beta.mgh:overlay_threshold=${range}::name=${con}_${hem}:visible=0::overlay_color=colorwheel,inverse " >> ${commandfilename}
 							printf "../${target}/surf/${hem}.${surftype}:overlay=../../target_${target}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh:overlay_threshold=${range}::name=${con}_${hem}:visible=0::overlay_color=colorwheel,inverse " >> ${commandfilename_qc}
 						done
-						### add thickness
-						#printf "fsaverage/surf/${hem}.${surftype}:overlay=${hem}.${type}_thickness.mgh:overlay_threshold=1,3::name=thickness_${hem}:visible=0::overlay_color=colorwheel,inverse::overlay_smooth=4 " >> ${commandfilename}
 					done
 
 				done
@@ -257,4 +275,3 @@ for type in "main_just_adults"; do # "main" "main_just_adults" "main_just_childr
 
 	done
 done
-

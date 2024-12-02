@@ -1,119 +1,129 @@
 #!/bin/bash
 
+# This script performs group-level FreeSurfer analysis on human MRI data
+# Key steps:
+# 1. Sets up group descriptor (FSGD) files for different contrasts (MTsat, R1, R2s, thickness)
+# 2. Copies individual FreeSurfer reconstructions to results directory
+# 3. Performs group statistics using mris_preproc and mri_glmfit
+# 4. Handles multiple cortical depths and smoothing levels
+# 5. Projects data to fsaverage template space
+
+# Set up main results directory
 overall_result_dir="Cortical_analysis/group_freesurfer/humans"
 mkdir ${overall_result_dir}
 cd ${overall_result_dir}
 mkdir ${overall_result_dir}/Setups
 type="main"
-### Start fsgd file
-### https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat
-### https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdfOSGM
 
+# Create FSGD files for each contrast
+# FSGD = FreeSurfer Group Descriptor format
+# See: https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat
+# And: https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdfOSGM
+for con in "MTsat" "R1" "R2s_WOLS" "thickness"; do
+    fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
+    yes | rm ${fsgd_file}
+    echo "GroupDescriptorFile 1" >> ${fsgd_file}
+    echo "Title OSGM" >> ${fsgd_file}
+    echo "Class Main" >> ${fsgd_file}
+    echo "Variables Age" >> ${fsgd_file}
+    subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
+    yes | rm ${subjlist_file}
+done
 
-	### make separate fsgd for each contrast
-	for con in "MTsat" "R1" "R2s_WOLS" "thickness"; do
-		fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
-		yes | rm ${fsgd_file}
-		echo "GroupDescriptorFile 1" >> ${fsgd_file}
-		echo "Title OSGM" >> ${fsgd_file} ### previous JustAverage or something like that
-		echo "Class Main" >> ${fsgd_file} ### name of category
-		echo "Variables Age" >> ${fsgd_file} ### new
-		subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
-		yes | rm ${subjlist_file}
-	done
+# Create contrast matrix for group average
+mainmtx="${overall_result_dir}/Setups/group_average.mtx"
+yes | rm $mainmtx
+echo "1 0" >> ${mainmtx}
 
-	### contrast files
-	mainmtx="${overall_result_dir}/Setups/group_average.mtx"
-	yes | rm $mainmtx
-	echo "1 0" >> ${mainmtx}
+# Copy individual FreeSurfer reconstructions to results directory
+echo "Copying individual subject directories..."
+for subj in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15; do
+    freesurfer_folder="freesurfer_recons/sub-${subj}-1mm"
+    to_copy_folder="${overall_result_dir}/Subj_${subj}"
+    if ! [ -d ${to_copy_folder} ]; then
+        echo "Copying ${freesurfer_folder} to ${to_copy_folder}"
+        cp -R ${freesurfer_folder} ${to_copy_folder}
+    fi
+    
+    # Add subject info to FSGD files
+    for con in "MTsat" "R1" "R2s_WOLS" "thickness"; do
+        subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
+        fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
+        echo "Input Subj_${subj}" >> ${fsgd_file}
+        echo "Subj_${subj}" >> ${subjlist_file}
+    done
+done
 
-	### Copy all relevant freesurfer folders in to one results directory
-	echo "copying directories over"
-	for subj in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15; do
+# Set up FreeSurfer environment and copy template
+export FREESURFER_HOME="freesurfer/7.1.0/ubuntu-bionic-amd64"
+export SUBJECTS_DIR=${overall_result_dir}
+if ! [ -d ${SUBJECTS_DIR}/fsaverage ]; then
+    cp -R freesurfer/6.0.0/ubuntu-xenial-amd64/subjects/fsaverage ${SUBJECTS_DIR}
+fi
 
-		freesurfer_folder="freesurfer_recons/sub-${subj}-1mm" #### path from saskia
-		to_copy_folder="${overall_result_dir}/Subj_${subj}"
-		if ! [ -d ${to_copy_folder} ]; then
-			echo "copy ${freesurfer_folder} ${to_copy_folder}"
-			cp -R ${freesurfer_folder} ${to_copy_folder}
-		fi
-		
-		### write info in fsdg 
-		for con in "MTsat" "R1" "R2s_WOLS" "thickness"; do
-			subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
-			fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
-			echo "Input Subj_${subj}" >> ${fsgd_file}
-			echo "Subj_${subj}" >> ${subjlist_file}
-		done
+# Perform statistical analysis
+echo "Running statistical analysis..."
+for target in "fsaverage"; do 
+    result_dir="${overall_result_dir}/target_${target}"
+    mkdir $result_dir
+    echo "Results will be saved to: $result_dir"
 
-	done
+    # Process cortical thickness separately first
+    if ! [ -f ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh ]; then
+        fsgd_file="${overall_result_dir}/Setups/${type}_for_thickness.fsgd"
+        mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi lh --meas thickness --out ${result_dir}/target_${target}_lh.${type}_thickness_avg.mgh
+        mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi rh --meas thickness --out ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh
+    fi
 
-	### Prepare data for group analysis
-	export FREESURFER_HOME="freesurfer/7.1.0/ubuntu-bionic-amd64"
-	export SUBJECTS_DIR=${overall_result_dir}
-	if ! [ -d ${SUBJECTS_DIR}/fsaverage ]; then
-		cp -R freesurfer/6.0.0/ubuntu-xenial-amd64/subjects/fsaverage ${SUBJECTS_DIR}
-	fi
+    # Process each cortical depth
+    for cd in "avg" "0.5"; do
+        # Process each contrast and hemisphere
+        for con in "thickness" "MTsat" "R1" "R2s_WOLS"; do
+            for hem in "lh" "rh"; do
+                # Generate mris_preproc command file
+                commandfile="${result_dir}/target_${target}_mris_preproc_command_${con}_${hem}_${cd}"
+                yes | rm ${commandfile}
+                fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
+                echo -e "mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi ${hem} --out ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh \c" >> ${commandfile}
 
-	echo "DOING STATS"
-	for target in "fsaverage"; do 
+                # Add input files based on cortical depth
+                subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
+                if [ $cd == "avg" ]; then
+                    for fol in `cat ${subjlist_file}`; do
+                        echo -e "--is ${overall_result_dir}/$fol/SurfaceProjections/${con}_average_${hem}_CORRECTED.mgh \c" >> $commandfile
+                    done
+                else
+                    for fol in `cat ${subjlist_file}`; do
+                        echo -e "--is ${overall_result_dir}/$fol/MPMvals/${hem}_${con}_${cd}.mgh \c" >> $commandfile
+                    done
+                fi
 
-		result_dir="${overall_result_dir}/target_${target}"
-		mkdir $result_dir
-		echo "result dir is $result_dir"
+                # Run preprocessing if output doesn't exist
+                if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh ]; then
+                    bash ${commandfile}
+                fi
+            done
+        done
 
-		if ! [ -f ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh ]; then
-			fsgd_file="${overall_result_dir}/Setups/${type}_for_thickness.fsgd"
-			mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi lh --meas thickness --out ${result_dir}/target_${target}_lh.${type}_thickness_avg.mgh # --mean # --std
-			mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi rh --meas thickness --out ${result_dir}/target_${target}_rh.${type}_thickness_avg.mgh #--mean
-		fi
+        # Apply different smoothing kernels and run GLM
+        for smoothing in "00" "03"; do
+            for con in "MTsat" "R1" "R2s_WOLS" "thickness"; do
+                for hem in "lh" "rh"; do
+                    echo "Applying smoothing kernel: ${smoothing}mm FWHM"
+                    
+                    # Smooth the surface data
+                    if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh ]; then
+                        mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh 
+                        echo "mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh "
+                    fi
 
-		for cd in "avg" "0.5"; do
-			### mri_preproc MPMs
-			for con in "thickness" "MTsat" "R1" "R2s_WOLS"; do
-				for hem in "lh" "rh"; do
-					### mris_preproc
-					commandfile="${result_dir}/target_${target}_mris_preproc_command_${con}_${hem}_${cd}"
-					yes | rm ${commandfile}
-					fsgd_file="${overall_result_dir}/Setups/${type}_for_${con}.fsgd"
-					echo -e "mris_preproc --fsgd ${fsgd_file} --target ${target} --hemi ${hem} --out ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh \c" >> ${commandfile}
-		#			for fol in `ls -d ${result_dir}/Subj*`; do
-					subjlist_file="${overall_result_dir}/${type}_subjlist_for_${con}"
-					if [ $cd == "avg" ]; then
-						for fol in `cat ${subjlist_file}`; do
-							echo -e "--is ${overall_result_dir}/$fol/SurfaceProjections/${con}_average_${hem}_CORRECTED.mgh \c" >> $commandfile
-						done
-					else
-						for fol in `cat ${subjlist_file}`; do
-							echo -e "--is ${overall_result_dir}/$fol/MPMvals/${hem}_${con}_${cd}.mgh \c" >> $commandfile
-						done
-					fi
-					if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh ]; then
-						bash ${commandfile}
-					fi
-				done
-			done
-
-			for smoothing in "00" "03"; do #"00" "03" "07" "10"; do
-				### further process
-				for con in "MTsat" "R1" "R2s_WOLS" "thickness"; do
-					for hem in "lh" "rh"; do
-						echo "smoothing"
-						### smooth
-						if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh ]; then
-							mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh 
-							echo "mri_surf2surf --hemi ${hem} --s ${target} --fwhm ${smoothing} --cortex --sval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}.mgh --tval ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh "
-						fi
-						### glmfit
-						if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm/beta.mgh ]; then
-							mri_glmfit --y ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh --surf ${target} ${hem} --osgm --glmdir ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm --cortex
-						fi
-					done
-				done
-
-				
-			done
-		done
-
-	done
+                    # Run GLM analysis
+                    if ! [ -f ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm/beta.mgh ]; then
+                        mri_glmfit --y ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.mgh --surf ${target} ${hem} --osgm --glmdir ${result_dir}/target_${target}_${hem}.${type}_${con}_${cd}_sm${smoothing}.osgm --cortex
+                    fi
+                done
+            done
+        done
+    done
+done
 done

@@ -1,4 +1,20 @@
-﻿ssh silbermond  ## Neurophysics compute server
+﻿# FreeSurfer Processing Pipeline for Human Brain Data
+# This script outlines the steps for processing human brain MRI data using FreeSurfer 6.0.0
+#
+# The pipeline includes:
+# 1. Initial setup and environment configuration
+# 2. Pre-processing using custom MPM pipeline
+# 3. FreeSurfer reconstruction steps (autorecon1/2/3)
+# 4. Brain mask conversion and registration
+# 5. MPM to FreeSurfer space registration
+#
+# Requirements:
+# - FreeSurfer 6.0.0
+# - AFNI
+# - SPM (for masking)
+# - Custom MPM preprocessing scripts
+
+ssh silbermond  ## Neurophysics compute server
 FREESURFER  ## calls freesurfer/6.0.0/ubuntu-xenial-amd64/bin
 export SUBJECTS_DIR=
 export LD_LIBRARY_PATH=
@@ -35,9 +51,3 @@ csh
 foreach sub (sub-01 sub-02 sub-03 sub-04 sub-05 sub-06 sub-07 sub-08 sub-09 sub-10 sub-11 sub-12 sub-13 sub-14 sub-15)
 tkregister2 --mov derivatives/MPMs_wOLS-true_rfcorr-percon/$sub/Results/$sub*_R1.nii --s $sub-1mm --regheader --reg  $SUBJECTS_DIR/$sub-1mm/mri/transforms/MPM2lores.dat
 end
-
-
-
-
-
-

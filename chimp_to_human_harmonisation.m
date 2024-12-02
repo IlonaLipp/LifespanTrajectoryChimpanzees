@@ -1,13 +1,31 @@
+%% Chimpanzee to Human Brain Mapping Harmonisation Script
+% This script performs harmonisation of cortical measurements between chimpanzee and human brain data.
+% It analyzes R1, MTsat and R2s maps, comparing values across species and generating conversion factors.
+%
+% Key functions:
+% 1. Loads and processes group-level data for both species
+% 2. Performs regional analyses using BB38 atlas
+% 3. Calculates conversion parameters between species
+% 4. Applies conversion to individual chimpanzee data
+%
+% Dependencies:
+% - FreeSurfer 6.0.0 MATLAB tools
+% - BrewerMap for visualization
+% - Custom functions: errorbarxy, function_wtlsc_line, function_to_create_brewermap
+
 clear all
 close all
 clc
 
+% Add required paths
 addpath(genpath('freesurfer/6.0.0/ubuntu-xenial-amd64/matlab'))
 rmpath(genpath('Primate_resources/HCPpipelines-master'))
 addpath(genpath('Software/BrewerMap'))
+addpath(fullfile(pwd, '../functions'));
 
 resultdir = 'Cortical_analysis';
 
+% Initialize variables
 hemispheres = {'lh', 'rh', 'both'};
 all_chimp_mean = [];
 all_human_mean = [];
@@ -19,7 +37,7 @@ mpm = 'R2s'
 
 contrasts = {'R1','MTsat','R2s'};
 
-%%% put together stats for humans
+% Load and summarize human demographic data
 load_human_ages
 mean(ages_from_database(1:15))
 std(ages_from_database(1:15))
@@ -36,7 +54,7 @@ for c = 1:length(contrasts)
     clear chimp_vals human_vals
     
     contrast = contrasts{c};
-    residus = []; %%% initiate
+    residus = []; % Initialize residuals array
     both_hem_means_chimps = [];
     both_hem_means_humans = [];
     both_hem_std_chimps = [];
@@ -44,64 +62,57 @@ for c = 1:length(contrasts)
     
     reg_count = 0;
     
+    % Process each hemisphere
     for h = 1:length(hemispheres)
 
         hemisphere = hemispheres{h};
 
+        % Process individual hemispheres
         if strcmp(hemisphere, 'lh') || strcmp(hemisphere, 'rh')
             
-            %% chimps group average
-            %%% group MTsat data for adult chimps
+            % Load chimp group average data
             chimpfile = ['Cortical_analysis/group_freesurfer/target_fsaverage/target_fsaverage_',hemisphere,'.main_just_adults_',contrast,'_0.5.mgh'];
             [volmat, M, mr_parms, volsz] = load_mgh(chimpfile);
-            volmat_chimps = squeeze(volmat); %%% should be vertex x chimp
+            volmat_chimps = squeeze(volmat); % vertex x chimp matrix
 
-            %% humans group average
-            %%% group MTsat data for adult humans
+            % Load human group average data
             if strcmp(contrast, 'R2s')
                 humanfile = ['Cortical_analysis/group_freesurfer/humans/target_fsaverage/target_fsaverage_',hemisphere,'.main_R2s_WOLS_0.5.mgh'];
             else
                 humanfile = ['Cortical_analysis/group_freesurfer/humans/target_fsaverage/target_fsaverage_',hemisphere,'.main_',contrast,'_0.5.mgh'];
             end
             [volmat, M, mr_parms, volsz] = load_mgh(humanfile);
-            volmat_humans = squeeze(volmat); %%% should be vertex x chimp
+            volmat_humans = squeeze(volmat); % vertex x human matrix
 
-            %% get chimp atlas information
+            % Load and process BB38 atlas information
             annotfile = ['Cortical_analysis/group_freesurfer/fsaverage/label/',hemisphere,'.BB38chimp.annot']
             [vertices, labeling, colortable] = read_annotation(annotfile);
             colors = colortable.table(1:end, 5);
-            %%% correct labelling
+            
+            % Correct labeling indices
             clear labeling_corr
             for v = 1:length(labeling)
                 if labeling(v) == 0
                     labeling_corr(v,1) = 0; 
                 else
-                    labeling_corr(v,1) = find(colors == labeling(v)) - 1; %%% -1 for bb38 
+                    labeling_corr(v,1) = find(colors == labeling(v)) - 1; % -1 for BB38 
                 end
             end
 
-            %% extract values
-            %%% we now have a labeling_corr vector with the region idx
-            %%% get chimp mean values that correspond to luke values
-            for r = 1:38 %length(regionnames)
-                %roi = regionnames{r};
-                %roiidx = find(strcmp(colortable.struct_names,roi));
-                %vertidx = find(labeling_corr == roiidx);
+            % Extract regional values
+            for r = 1:38
                 vertidx = find(labeling_corr == r);
                 reg_count = reg_count + 1;
                 if length(vertidx) > 0
-                   %chimp_mean(r) = mean(vol(vertidx));
-                   chimp_vals(:,reg_count) = median(volmat_chimps(vertidx,:),1)'; %%% 1 value per chimp
+                   % Calculate median values per region for chimps
+                   chimp_vals(:,reg_count) = median(volmat_chimps(vertidx,:),1)';
                     chimp_mean(r) = mean(chimp_vals(:,reg_count));
                     chimp_std(r) = std(chimp_vals(:,reg_count));
-   %                chimp_mean(r) = median(chimp_vals);
-   %               chimp_std(r) = iqr(chimp_vals); 
-                   %%%
-                   human_vals(:,reg_count) = median(volmat_humans(vertidx,:),1)'; %%% 1 value per chimp
+                   
+                   % Calculate median values per region for humans
+                   human_vals(:,reg_count) = median(volmat_humans(vertidx,:),1)';
                     human_mean(r) = mean(human_vals(:,reg_count));
                     human_std(r) = std(human_vals(:,reg_count));
-   %                human_mean(r) = median(human_vals);
-   %                human_std(r) = iqr(human_vals);     
                 else
                    chimp_mean(r) = NaN;
                    chimp_std(r) = NaN;
@@ -109,7 +120,8 @@ for c = 1:length(contrasts)
                    human_std(r) = NaN;
                 end
             end
-            %%% stack values of lh and rh and set "used" to original values
+            
+            % Stack hemisphere values
             both_hem_means_chimps = [both_hem_means_chimps, chimp_mean];
             both_hem_means_humans = [both_hem_means_humans, human_mean];
             both_hem_std_chimps = [both_hem_std_chimps, chimp_std];
@@ -118,7 +130,7 @@ for c = 1:length(contrasts)
             chimp_std_to_use = chimp_std;
             human_means_to_use = human_mean;
             human_std_to_use = human_std;
-        else %%% set used to stacked values
+        else % For 'both' hemispheres case
             chimp_means_to_use = both_hem_means_chimps;
             chimp_std_to_use = both_hem_std_chimps;
             human_means_to_use = both_hem_means_humans;
@@ -126,39 +138,38 @@ for c = 1:length(contrasts)
             roi_names = [colortable.struct_names(2:end); colortable.struct_names(2:end)];
         end
         
-
-        %% comparison 
-        %%% scatter
+        % Generate comparison plots
         figure()
             hold on
-            %idx = find(chimp_mean > 2); 
-            %idx = 1:length(chimp_means_to_use)
             scatter(chimp_means_to_use, human_means_to_use);
             xlabel(['chimp mean ', contrast]);
             ylabel(['human mean ', contrast]);
             
-            xin = chimp_means_to_use; %(idx);
-            yin = human_means_to_use; %(idx);
-            uxin = chimp_std_to_use; %(idx);
-            uyin = human_std_to_use; %(idx);
+            % Add error bars
+            xin = chimp_means_to_use;
+            yin = human_means_to_use;
+            uxin = chimp_std_to_use;
+            uyin = human_std_to_use;
             errorbarxy(xin, yin, uxin, uyin);
-            %%% implement this special fit
+            
+            % Fit weighted total least squares line
             [a,b,alpha,p,chiopt,Cab,Calphap] = function_wtlsc_line(xin,yin,uxin,uyin);
             % a,b: usual straight line parameters; y=a*x+b
             refline(a,b);
             title([hemisphere, ': ', num2str(a) ' x chimp + ', num2str(b)]);
-            %%% calculate confidence interval of slope
-            %%% calculate residuals
-            residus = [residus; [yin - (a * xin + b)]']; %%% create vector with residuasl for lh; rh
-            %%% save plot
+            
+            % Calculate residuals
+            residus = [residus; [yin - (a * xin + b)]'];
+            
+            % Save plot
             save_ylim = ylim;
             save_xlim = xlim;
             figure_file_to_save = [resultdir,'/figures/chimp_vs_human_',contrast,'_',hemisphere,'.jpg'];
             saveas(gcf,figure_file_to_save);
 
-
+        % Generate surface maps for individual hemispheres
         if strcmp(hemisphere, 'lh') || strcmp(hemisphere, 'rh')
-            %% make whole brain relative difference maps, but how to decide what is significant?
+            % Calculate relative difference maps
             human_avg_map = mean(volmat_humans, 2); human_std_map = [std(volmat_humans')]';
             chimp_avg_map = mean(volmat_chimps, 2); chimp_std_map = [std(volmat_chimps')]';
             perc_change_chimps_to_humans = 100*(human_avg_map - chimp_avg_map)./(chimp_avg_map);
@@ -169,9 +180,7 @@ for c = 1:length(contrasts)
         end
     end
     
-    %% once this is done we have the slope for conversion, done for "both"
-    %%% now i need to read and write out the individual subjects mgh files
-    %%% just for chimps
+    % Apply conversion to individual chimp data
     subj_dirs = dir(['Cortical_analysis/group_freesurfer/Subj*']);
     for s = 1:length(subj_dirs)
         subj_dir = [subj_dirs(s).folder,'/',subj_dirs(s).name];  
@@ -182,7 +191,7 @@ for c = 1:length(contrasts)
                     mgh_corrected_file = [subj_dir,'/SurfaceProjections/equi_',hemisphere,'_whole_brain_',contrast,'_0p3_0.5_CORRECTED.mgh'];
                     if exist(mgh_corrected_file )
                         [volmat, M, mr_parms, volsz] = load_mgh(mgh_corrected_file);
-                        volmat_corrected = a * volmat + b; %%% these are saved from the loop run for "both"
+                        volmat_corrected = a * volmat + b; % Apply conversion parameters
                     	save_mgh(volmat_corrected, mgh_converted, M, mr_parms);
                     end
                 end
